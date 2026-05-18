@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 
 export default function Chat({ socket, sendChatMessage, myUserId }) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input,    setInput]    = useState('');
   const bottomRef = useRef(null);
 
   useEffect(() => {
     if (!socket) return;
-    const onMessage = (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    };
+    const onMessage = (msg) => setMessages(prev => [...prev, msg]);
     socket.on('chat-message', onMessage);
     return () => socket.off('chat-message', onMessage);
   }, [socket]);
@@ -26,39 +24,102 @@ export default function Chat({ socket, sendChatMessage, myUserId }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 rounded-xl border border-gray-700">
-      <div className="px-4 py-3 border-b border-gray-700">
-        <h3 className="text-sm font-semibold text-white">Chat</h3>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%',
+      background: 'rgba(10,0,25,0.85)',
+      border: '1px solid #2a0050',
+      borderRadius: 12,
+      fontFamily: "'Courier New', monospace",
+      overflow: 'hidden',
+    }}>
+
+      {/* Header */}
+      <div style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid #2a0050',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff6ec7', boxShadow: '0 0 6px #ff6ec7', display: 'inline-block' }}/>
+        <span style={{ fontSize: 9, letterSpacing: 3, color: '#ce93d8', fontWeight: 700 }}>
+          CHAT
+        </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+      {/* Messages */}
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '10px 12px',
+        display: 'flex', flexDirection: 'column', gap: 8,
+        minHeight: 0,
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#2a0050 transparent',
+      }}>
         {messages.length === 0 && (
-          <p className="text-gray-500 text-xs text-center mt-4">No messages yet. Say hi!</p>
+          <p style={{
+            fontSize: 9, letterSpacing: 2, color: '#3a006a',
+            textAlign: 'center', marginTop: 16,
+          }}>
+            NO MESSAGES YET · SAY HI
+          </p>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex flex-col ${msg.userId === myUserId ? 'items-end' : 'items-start'}`}>
-            <span className="text-xs text-gray-500 mb-0.5">{msg.userName} · {msg.time}</span>
-            <div className={`px-3 py-1.5 rounded-2xl text-sm max-w-[80%] ${
-              msg.userId === myUserId ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-100'
-            }`}>
-              {msg.text}
+
+        {messages.map(msg => {
+          const isMe = msg.userId === myUserId;
+          return (
+            <div key={msg.id} style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: isMe ? 'flex-end' : 'flex-start',
+            }}>
+              <span style={{ fontSize: 7, letterSpacing: 1, color: '#4a148c', marginBottom: 3 }}>
+                {msg.userName} · {msg.time}
+              </span>
+              <div style={{
+                maxWidth: '80%', padding: '7px 11px',
+                borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                background: isMe ? 'linear-gradient(135deg,#4a148c,#6a1b9a)' : 'rgba(255,255,255,0.04)',
+                border: isMe ? 'none' : '1px solid #2a0050',
+                color: isMe ? '#f3e5f5' : '#ce93d8',
+                fontSize: 11, lineHeight: 1.5,
+                boxShadow: isMe ? '0 0 10px rgba(106,27,154,0.3)' : 'none',
+                wordBreak: 'break-word',
+              }}>
+                {msg.text}
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
+          );
+        })}
+        <div ref={bottomRef}/>
       </div>
 
-      <div className="flex gap-2 p-3 border-t border-gray-700">
+      {/* Input */}
+      <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid #2a0050' }}>
         <input
-          className="flex-1 bg-gray-800 text-white px-3 py-2 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-purple-500"
-          placeholder="Type a message..."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          placeholder="type a message..."
+          style={{
+            flex: 1, padding: '8px 12px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid #2a0050', borderRadius: 8,
+            color: '#ce93d8', fontSize: 11,
+            fontFamily: "'Courier New', monospace",
+            outline: 'none', transition: 'border-color 0.2s',
+          }}
+          onFocus={e => e.target.style.borderColor = '#7b1fa2'}
+          onBlur={e  => e.target.style.borderColor = '#2a0050'}
         />
         <button
           onClick={handleSend}
-          className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+          style={{
+            padding: '8px 14px',
+            background: 'linear-gradient(135deg,#4a148c,#6a1b9a)',
+            border: '1px solid #7b1fa2', borderRadius: 8,
+            color: '#ff6ec7', fontSize: 14, cursor: 'pointer',
+            boxShadow: '0 0 8px rgba(255,110,199,0.2)',
+            transition: 'opacity 0.2s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
         >
           →
         </button>

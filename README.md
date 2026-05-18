@@ -1,4 +1,4 @@
-# 🎬 2gether — Watch Party Platform
+#  2gether — Watch Party Platform
 
 A real-time social watch party app. Watch YouTube videos or local files together with friends, see each other on camera, chat live and react in real time — all in a retro drive-in cinema themed interface.
 

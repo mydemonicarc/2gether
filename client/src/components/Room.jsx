@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import VideoPlayer from './VideoPlayer';
 import VideoCall from './VideoCall';
 import Chat from './Chat';
@@ -14,18 +14,49 @@ export default function Room({ socket, roomData, myUserId, onLeave }) {
   const [urlToLoad, setUrlToLoad] = useState('');
   const isHost = hostId === myUserId;
 
-  const { localStream, remoteStreams, micOn, camOn, toggleMic, toggleCam,
-broadcastData, broadcastBinary, onIncomingData } =
-  useWebRTC({ socket, myUserId, roomUsers: users });
+const { localStream, remoteStreams, micOn, camOn, toggleMic, toggleCam,
+    broadcastData, broadcastBinary, onIncomingData,
+    isScreenSharing, startScreenShare, stopScreenShare, getPeers } =
+    useWebRTC({ socket, myUserId, roomUsers: users });
 
-  const {
+const {
   selectFile, localFileUrl,
   guestFileUrl, streamProgress,
   isBuffering, fileName,
-  handleIncomingData,
-} = useFileStream({ isHost, broadcastData, broadcastBinary });
+  handleIncomingData, resetFile,
+} = useFileStream({ isHost, broadcastData, broadcastBinary, onIncomingData, getPeers });
 
 onIncomingData(handleIncomingData);
+
+  const [screenShareStream, setScreenShareStream] = useState(null);
+  const screenShareHostRef = useRef(null);
+
+  // Listen for screen-share-start/stop signals
+  useEffect(() => {
+    if (!socket) return;
+    const onStart = ({ hostId: sharingHostId }) => {
+      screenShareHostRef.current = sharingHostId;
+      setScreenShareStream(prev => remoteStreams[sharingHostId] || prev);
+    };
+    const onStop = () => {
+      screenShareHostRef.current = null;
+      setScreenShareStream(null);
+    };
+    socket.on('screen-share-start', onStart);
+    socket.on('screen-share-stop',  onStop);
+    return () => {
+      socket.off('screen-share-start', onStart);
+      socket.off('screen-share-stop',  onStop);
+    };
+  }, [socket, remoteStreams]);
+
+  // When remoteStreams updates, check if the sharing host's stream arrived
+  useEffect(() => {
+    const sharingHostId = screenShareHostRef.current;
+    if (sharingHostId && remoteStreams[sharingHostId]) {
+      setScreenShareStream(remoteStreams[sharingHostId]);
+    }
+  }, [remoteStreams]);
 
   useEffect(() => {
     if (!socket) return;
@@ -35,6 +66,22 @@ onIncomingData(handleIncomingData);
     socket.on('user-left',   onLeft);
     return () => { socket.off('user-joined', onJoin); socket.off('user-left', onLeft); };
   }, [socket]);
+
+  useEffect(() => {
+    if (!socket || isHost) return;
+    const onSync = ({ url }) => {
+      if (url) setUrlToLoad(url);
+    };
+    const onMode = ({ mode }) => {
+      if (mode === 'local') setUrlToLoad('');
+    };
+    socket.on('video-sync', onSync);
+    socket.on('video-mode', onMode);
+    return () => {
+      socket.off('video-sync', onSync);
+      socket.off('video-mode', onMode);
+    };
+  }, [socket, isHost]);
 
   function copyInviteLink() {
     const url = `${window.location.origin}?room=${roomData.id}`;
@@ -46,7 +93,14 @@ onIncomingData(handleIncomingData);
   function handleLoad() {
     const match = urlInput.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
     if (!match) return;
+    resetFile();
     setUrlToLoad(urlInput);
+    socket?.emit('video-action', { action: 'pause', timestamp: 0, url: urlInput });
+  }
+
+  function handleSelectFile() {
+    socket?.emit('video-mode', { mode: 'local' });
+    selectFile();
   }
 
   return (
@@ -56,7 +110,6 @@ onIncomingData(handleIncomingData);
       fontFamily: "'Courier New', monospace",
     }}>
       <style>{`
-        
         @keyframes neonPulse   { 0%,100%{text-shadow:0 0 8px #ff6ec7,0 0 20px #ff6ec7} 50%{text-shadow:0 0 4px #ff6ec7,0 0 10px #ff6ec7} }
         @keyframes screenGlow  { 0%,100%{box-shadow:0 0 30px rgba(123,31,162,0.5),0 0 60px rgba(123,31,162,0.2)} 50%{box-shadow:0 0 45px rgba(255,110,199,0.4),0 0 90px rgba(123,31,162,0.3)} }
         @keyframes groundShine { 0%,100%{opacity:0.4} 50%{opacity:0.7} }
@@ -169,16 +222,32 @@ onIncomingData(handleIncomingData);
                 boxShadow:'0 0 14px rgba(255,64,129,0.4)',
                 transition:'background .2s', whiteSpace:'nowrap',
               }}>▶ LOAD</button>
-              <button onClick={selectFile} style={{
-              padding:'8px 16px', borderRadius:8, border:'1px solid #4a148c',
-              background:'transparent', color:'#ce93d8', fontSize:11,
-              fontWeight:700, letterSpacing:2, cursor:'pointer',
-              fontFamily:"'Courier New',monospace", whiteSpace:'nowrap',
-            }}> OPEN FILE</button>
+
+              <button
+                onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+                style={{
+                  padding:'8px 16px', borderRadius:8,
+                  border:`1px solid ${isScreenSharing ? '#ff4081' : '#4a148c'}`,
+                  background: isScreenSharing ? 'rgba(255,64,129,0.15)' : 'transparent',
+                  color: isScreenSharing ? '#ff4081' : '#ce93d8',
+                  fontSize:11, fontWeight:700, letterSpacing:2,
+                  cursor:'pointer', fontFamily:"'Courier New',monospace",
+                  whiteSpace:'nowrap',
+                }}
+              >
+                {isScreenSharing ? '⏹ STOP SHARE' : '🖥 SHARE SCREEN'}
+              </button>
+
+              <button onClick={handleSelectFile} style={{
+                padding:'8px 16px', borderRadius:8, border:'1px solid #4a148c',
+                background:'transparent', color:'#ce93d8', fontSize:11,
+                fontWeight:700, letterSpacing:2, cursor:'pointer',
+                fontFamily:"'Courier New',monospace", whiteSpace:'nowrap',
+              }}> OPEN FILE</button>
             </div>
           )}
 
-          {/* ── NIGHT SKY SCENE — flex:1 fills remaining space ── */}
+          {/* ── NIGHT SKY SCENE ── */}
           <div style={{
             flex:1, position:'relative', overflow:'hidden',
             background:'linear-gradient(180deg,#050010 0%,#0d0025 40%,#1a0035 72%,#1b0030 100%)',
@@ -224,7 +293,6 @@ onIncomingData(handleIncomingData);
               background:'#000',
               animation:'screenGlow 4s ease-in-out infinite',
               border:'2px solid #4a148c',
-              
             }}>
               <div style={{
                 background:'linear-gradient(90deg,#0d0020,#180030,#0d0020)',
@@ -237,17 +305,19 @@ onIncomingData(handleIncomingData);
                 <span style={{ fontSize:8, color:'#4a148c', letterSpacing:3, marginLeft:10 }}>NOW PLAYING</span>
               </div>
               <VideoPlayer
-              socket={socket}
-              isHost={isHost}
-              urlToLoad={urlToLoad}
-              localFileUrl={localFileUrl}
-              guestFileUrl={guestFileUrl}
-              streamProgress={streamProgress}
-              isBuffering={isBuffering}
-              fileName={fileName}
-              sendVideoAction={(action, timestamp, url) =>
-                socket?.emit('video-action', { action, timestamp, url })
-              }
+                socket={socket}
+                isHost={isHost}
+                urlToLoad={urlToLoad}
+                localFileUrl={localFileUrl}
+                guestFileUrl={guestFileUrl}
+                streamProgress={streamProgress}
+                isBuffering={isBuffering}
+                fileName={fileName}
+                screenShareStream={screenShareStream}
+                isScreenSharing={isScreenSharing}
+                sendVideoAction={(action, timestamp, url) =>
+                  socket?.emit('video-action', { action, timestamp, url })
+                }
               />
             </div>
 
@@ -269,7 +339,7 @@ onIncomingData(handleIncomingData);
             </div>
           </div>
 
-          {/* ── REACTIONS BAR — own section at the bottom ── */}
+          {/* ── REACTIONS BAR ── */}
           <div style={{
             flexShrink:0,
             background:'rgba(8,0,20,0.97)',
