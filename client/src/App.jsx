@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useSocket } from './hooks/useSocket';
 import Room from './components/Room';
 import LobbyScreen from './components/LobbyScreen';
+import LandingPage from './components/LandingPage';
+
 
 export default function App() {
   const { socket, connected, createRoom, joinRoom } = useSocket();
 
-  const [screen,      setScreen]      = useState('lobby');
+  const [screen,      setScreen]      = useState('landing');
   const [roomData,    setRoomData]    = useState(null);
   const [pendingRoom, setPendingRoom] = useState(null);
   const [myUserId,    setMyUserId]    = useState(null);
@@ -17,7 +19,11 @@ export default function App() {
   useEffect(() => {
     const params     = new URLSearchParams(window.location.search);
     const inviteRoom = params.get('room');
-    if (inviteRoom) setRoomInput(inviteRoom);
+    if (inviteRoom) {
+      // Skip landing if joining via invite link
+      setRoomInput(inviteRoom);
+      setScreen('lobby');
+    }
   }, []);
 
   useEffect(() => {
@@ -72,19 +78,23 @@ export default function App() {
     );
   }
 
-  return (
-    <LobbyScreen
-      connected={connected}
-      nameInput={nameInput}
-      setNameInput={setNameInput}
-      roomInput={roomInput}
-      setRoomInput={setRoomInput}
-      error={error}
-      onCreateRoom={handleCreate}
-      onJoinRoom={handleJoin}
-      pendingRoom={pendingRoom}
-      onEnterRoom={handleEnterRoom}
-      onDismissTicket={handleDismissTicket}
-    />
-  );
+  if (screen === 'lobby') {
+    return (
+      <LobbyScreen
+        connected={connected}
+        nameInput={nameInput}
+        setNameInput={setNameInput}
+        roomInput={roomInput}
+        setRoomInput={setRoomInput}
+        error={error}
+        onCreateRoom={handleCreate}
+        onJoinRoom={handleJoin}
+        pendingRoom={pendingRoom}
+        onEnterRoom={handleEnterRoom}
+        onDismissTicket={handleDismissTicket}
+      />
+    );
+  }
+
+  return <LandingPage onStart={() => setScreen('lobby')} />;
 }

@@ -42,7 +42,6 @@ function ShootingStars({ isDaytime }) {
       const dt = now - last; last = now;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Hide stars in daytime
       if (!isDaytime) {
         stars.forEach(s => {
           s.phase += s.speed;
@@ -138,21 +137,20 @@ function Car({ carIndex, color, bodyColor, wheelColor, facingLeft = false,
         ...style,
       }}
     >
-    {/* BEEP text */}
-    {isHonking && (
-    <div style={{
-        position: 'absolute', top: -36, left: '50%',
-        transform: `translateX(-50%) scaleX(${facingLeft ? -1 : 1})`,
-        color: '#ffffff', fontSize: 16, fontWeight: 900,
-        fontFamily: "'Courier New', monospace",
-        animation: 'beepPop 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards',
-        whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
-        textShadow: '0 0 10px #ff6ec7, 0 0 20px #ff6ec7, 0 0 40px #ff4081',
-        letterSpacing: 2,
-    }}>
-         BEEP BEEP!
-    </div>
-)}
+      {isHonking && (
+        <div style={{
+          position: 'absolute', top: -36, left: '50%',
+          transform: `translateX(-50%) scaleX(${facingLeft ? -1 : 1})`,
+          color: '#ffffff', fontSize: 16, fontWeight: 900,
+          fontFamily: "'Courier New', monospace",
+          animation: 'beepPop 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards',
+          whiteSpace: 'nowrap', zIndex: 10, pointerEvents: 'none',
+          textShadow: '0 0 10px #ff6ec7, 0 0 20px #ff6ec7, 0 0 40px #ff4081',
+          letterSpacing: 2,
+        }}>
+          BEEP BEEP!!!
+        </div>
+      )}
       <svg width="150" height="54" viewBox="0 0 150 54" overflow="visible">
         <rect x="4" y="26" width="90" height="19" rx="6" fill={bodyColor}/>
         <rect x="16" y="11" width="56" height="20" rx="8" fill={color}/>
@@ -160,50 +158,38 @@ function Car({ carIndex, color, bodyColor, wheelColor, facingLeft = false,
         <rect x="46" y="14" width="21" height="13" rx="4" fill="#b3e5fc" opacity=".75"/>
         <circle cx="28" cy="18" r="4" fill="#ffcc80"/>
         <circle cx="56" cy="18" r="4" fill="#ffb74d"/>
-        {/* Wheel 1 */}
         <g style={{ animation: 'spinWheel .5s linear infinite', transformBox: 'fill-box', transformOrigin: 'center' }}>
           <circle cx="20" cy="45" r="8" fill="#1a0030"/>
           <circle cx="20" cy="45" r="4" fill={wheelColor}/>
           <line x1="20" y1="37" x2="20" y2="53" stroke="#9c27b0" strokeWidth="1.5"/>
           <line x1="12" y1="45" x2="28" y2="45" stroke="#9c27b0" strokeWidth="1.5"/>
         </g>
-        {/* Wheel 2 */}
         <g style={{ animation: 'spinWheel .5s linear infinite', transformBox: 'fill-box', transformOrigin: 'center' }}>
           <circle cx="76" cy="45" r="8" fill="#1a0030"/>
           <circle cx="76" cy="45" r="4" fill={wheelColor}/>
           <line x1="76" y1="37" x2="76" y2="53" stroke="#9c27b0" strokeWidth="1.5"/>
           <line x1="68" y1="45" x2="84" y2="45" stroke="#9c27b0" strokeWidth="1.5"/>
         </g>
-        {/* Headlight */}
         <ellipse cx="94" cy="33" rx="4" ry="3" fill="#fff9c4"
           opacity={headlightOpacity}
           style={{ filter: headlightFlash ? 'drop-shadow(0 0 8px #fff9c4)' : 'none', boxShadow: headlightGlow }}
         />
-    {headlightFlash && (
-    <>
-        <ellipse cx="94" cy="33" rx="10" ry="6" fill="#fff9c4" opacity="0.4"/>
-        {/* Light beam cone */}
-        <polygon 
-        points="97,30 97,36 140,42 140,24" 
-        fill="url(#beamGrad)" 
-        opacity="0.35"
-        />
-        {/* Beam gradient definition */}
-        <defs>
-        <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#fff9c4" stopOpacity="0.8"/>
-            <stop offset="100%" stopColor="#fff9c4" stopOpacity="0"/>
-        </linearGradient>
-        </defs>
-    </>
-    )}
+        {headlightFlash && (
+          <>
+            <ellipse cx="94" cy="33" rx="10" ry="6" fill="#fff9c4" opacity="0.4"/>
+            <polygon points="97,30 97,36 140,42 140,24" fill="url(#beamGrad)" opacity="0.35"/>
+            <defs>
+              <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#fff9c4" stopOpacity="0.8"/>
+                <stop offset="100%" stopColor="#fff9c4" stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+          </>
+        )}
       </svg>
     </div>
   );
 }
-
-// ── Ticket popup ──────────────────────────────────────────────────────────────
-
 
 // ── Main LobbyScreen ──────────────────────────────────────────────────────────
 export default function LobbyScreen({
@@ -211,12 +197,12 @@ export default function LobbyScreen({
   roomInput, setRoomInput, error,
   onCreateRoom, onJoinRoom,
   pendingRoom, onEnterRoom, onDismissTicket,
+  onBack,
 }) {
   const [isDaytime, setIsDaytime] = useState(false);
   const [honkingCar, setHonkingCar] = useState(null);
   const [driftingCar, setDriftingCar] = useState(null);
 
-  // Occasional random car drift
   useEffect(() => {
     const interval = setInterval(() => {
       const car = Math.floor(Math.random() * 4);
@@ -231,11 +217,11 @@ export default function LobbyScreen({
     setTimeout(() => setHonkingCar(null), 700);
   }, []);
 
-  const nightBg  = 'linear-gradient(180deg,#050010 0%,#0d0025 35%,#1a0035 65%,#110020 100%)';
-  const dayBg    = 'linear-gradient(180deg,#87ceeb 0%,#b0e0f5 35%,#d4f0fc 65%,#c8eefc 100%)';
+  const nightBg = 'linear-gradient(180deg,#050010 0%,#0d0025 35%,#1a0035 65%,#110020 100%)';
+  const dayBg   = 'linear-gradient(180deg,#87ceeb 0%,#b0e0f5 35%,#d4f0fc 65%,#c8eefc 100%)';
 
   const cars = [
-    { color: '#c62828', bodyColor: '#b71c1c', wheelColor: '#4a148c', left: 14,  facingLeft: false },
+    { color: '#cc2525', bodyColor: '#b71c1c', wheelColor: '#4a148c', left: 14,  facingLeft: false },
     { color: '#283593', bodyColor: '#1a237e', wheelColor: '#4a148c', left: 140, facingLeft: false },
     { color: '#2e7d32', bodyColor: '#1b5e20', wheelColor: '#4a148c', right: 140, facingLeft: true },
     { color: '#6a1b9a', bodyColor: '#4a148c', wheelColor: '#7b1fa2', right: 14,  facingLeft: true },
@@ -261,6 +247,27 @@ export default function LobbyScreen({
         @keyframes carDrift  { 0%{margin-left:0} 50%{margin-left:18px} 100%{margin-left:0} }
         @keyframes ticketIn  { 0%{opacity:0;transform:translateY(20px) scale(0.95)} 100%{opacity:1;transform:translateY(0) scale(1)} }
       `}</style>
+
+      {/* ← BACK button */}
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{
+            position: 'absolute', top: 16, left: 20, zIndex: 20,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: isDaytime ? '#0288d1' : '#7e57c2',
+            fontSize: 10, letterSpacing: 3,
+            fontFamily: "'Courier New', monospace",
+            display: 'flex', alignItems: 'center', gap: 6,
+            transition: 'color 0.2s',
+            padding: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = '#ff6ec7'}
+          onMouseLeave={e => e.currentTarget.style.color = isDaytime ? '#0288d1' : '#7e57c2'}
+        >
+          ← BACK
+        </button>
+      )}
 
       <ShootingStars isDaytime={isDaytime} />
 
@@ -393,7 +400,7 @@ export default function LobbyScreen({
             animation: isDaytime ? 'none' : 'borderGlow 3s ease-in-out infinite',
             boxShadow: isDaytime ? '0 8px 32px rgba(100,181,246,0.3)' : 'none',
             transition: 'all 1.2s ease',
-}}>
+          }}>
             <span style={{ position: 'absolute', top: 7, left: 9, fontSize: 9, opacity: 0.6 }}>✦</span>
             <span style={{ position: 'absolute', top: 7, right: 9, fontSize: 9, opacity: 0.6 }}>✦</span>
 
@@ -401,7 +408,7 @@ export default function LobbyScreen({
 
             <h1 style={{
               textAlign: 'center', margin: '0 0 3px', fontSize: 22,
-              fontWeight: 900, color:isDaytime ? '#0277bd' : '#ff6ec7', letterSpacing: 4,
+              fontWeight: 900, color: isDaytime ? '#0277bd' : '#ff6ec7', letterSpacing: 4,
               animation: isDaytime ? 'none' : 'neonPulse 2s ease-in-out infinite',
               transition: 'color 1.2s',
             }}>2gether</h1>
@@ -458,7 +465,7 @@ export default function LobbyScreen({
                 boxShadow: '0 0 12px rgba(255,64,129,0.4)',
               }}
             >
-              🎬 CREATE ROOM
+               CREATE ROOM
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 12 }}>
@@ -474,11 +481,11 @@ export default function LobbyScreen({
                 placeholder="ROOM CODE"
                 maxLength={6}
                 style={{
-                flex: 1, padding: '8px 7px', borderRadius: 7,
-                border: isDaytime ? '1px solid #90caf9' : '1px solid #4a148c',
-                background: isDaytime ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.04)', fontSize: 9,
-                fontFamily: "'Courier New', monospace", letterSpacing: 2,
-                color: isDaytime ? '#01579b' : '#ffe082', outline: 'none',
+                  flex: 1, padding: '8px 7px', borderRadius: 7,
+                  border: isDaytime ? '1px solid #90caf9' : '1px solid #4a148c',
+                  background: isDaytime ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.04)', fontSize: 9,
+                  fontFamily: "'Courier New', monospace", letterSpacing: 2,
+                  color: isDaytime ? '#01579b' : '#ffe082', outline: 'none',
                 }}
               />
               <button
@@ -502,7 +509,6 @@ export default function LobbyScreen({
         </div>
       </div>
 
-      {/* Ticket popup */}
       {pendingRoom && (
         <TicketPopup
           room={pendingRoom}

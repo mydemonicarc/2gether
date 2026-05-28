@@ -4,34 +4,76 @@ import VideoCall from './VideoCall';
 import Chat from './Chat';
 import Reactions from './Reactions';
 import { useWebRTC } from '../hooks/useWebRTC';
-import { useFileStream } from '../hooks/useFileStream';
+
+const MOODS = [
+  {
+    id: 'magenta',
+    label: 'Magenta',
+    color:  '#f700ff',
+    tint:   'rgba(247,0,255,0.15)',
+    border: '#a300b8',
+    ground: '#d400e0',
+  },
+  {
+    id: 'cyan',
+    label: 'Cyan',
+    color:  '#00fff7',
+    tint:   'rgba(0,255,247,0.12)',
+    border: '#00b8b2',
+    ground: '#00e5de',
+  },
+  {
+    id: 'voltage',
+    label: 'Voltage',
+    color:  '#ffee00',
+    tint:   'rgba(255,238,0,0.12)',
+    border: '#c4b800',
+    ground: '#e6d500',
+  },
+  {
+    id: 'plasma',
+    label: 'Plasma',
+    color:  '#ff4500',
+    tint:   'rgba(255,69,0,0.18)',
+    border: '#b83200',
+    ground: '#ff4500',
+  },
+  {
+    id: 'matrix',
+    label: 'Matrix',
+    color:  '#39ff14',
+    tint:   'rgba(57,255,20,0.11)',
+    border: '#28b80e',
+    ground: '#32e012',
+  },
+  {
+    id: 'ultraviolet',
+    label: 'Ultraviolet',
+    color:  '#5500ff',
+    tint:   'rgba(85,0,255,0.20)',
+    border: '#3a00b8',
+    ground: '#5500ff',
+  },
+];
 
 export default function Room({ socket, roomData, myUserId, onLeave }) {
-  const [users,    setUsers]    = useState(roomData.users || []);
-  const [hostId,   setHostId]   = useState(roomData.hostId);
-  const [copied,   setCopied]   = useState(false);
+  const [users,     setUsers]     = useState(roomData.users || []);
+  const [hostId,    setHostId]    = useState(roomData.hostId);
+  const [copied,    setCopied]    = useState(false);
   const [urlInput,  setUrlInput]  = useState('');
   const [urlToLoad, setUrlToLoad] = useState('');
+  const [showMood,  setShowMood]  = useState(false);
+  const [mood,      setMood]      = useState(MOODS[0]);
   const isHost = hostId === myUserId;
+  const moodBtnRef = useRef(null);
 
-const { localStream, remoteStreams, micOn, camOn, toggleMic, toggleCam,
-    broadcastData, broadcastBinary, onIncomingData,
-    isScreenSharing, startScreenShare, stopScreenShare, getPeers } =
+  const { localStream, remoteStreams, micOn, camOn, toggleMic, toggleCam,
+    isScreenSharing, startScreenShare, stopScreenShare } =
     useWebRTC({ socket, myUserId, roomUsers: users });
-
-const {
-  selectFile, localFileUrl,
-  guestFileUrl, streamProgress,
-  isBuffering, fileName,
-  handleIncomingData, resetFile,
-} = useFileStream({ isHost, broadcastData, broadcastBinary, onIncomingData, getPeers });
-
-onIncomingData(handleIncomingData);
 
   const [screenShareStream, setScreenShareStream] = useState(null);
   const screenShareHostRef = useRef(null);
 
-  // Listen for screen-share-start/stop signals
   useEffect(() => {
     if (!socket) return;
     const onStart = ({ hostId: sharingHostId }) => {
@@ -50,7 +92,6 @@ onIncomingData(handleIncomingData);
     };
   }, [socket, remoteStreams]);
 
-  // When remoteStreams updates, check if the sharing host's stream arrived
   useEffect(() => {
     const sharingHostId = screenShareHostRef.current;
     if (sharingHostId && remoteStreams[sharingHostId]) {
@@ -69,19 +110,30 @@ onIncomingData(handleIncomingData);
 
   useEffect(() => {
     if (!socket || isHost) return;
-    const onSync = ({ url }) => {
-      if (url) setUrlToLoad(url);
-    };
-    const onMode = ({ mode }) => {
-      if (mode === 'local') setUrlToLoad('');
-    };
+    const onSync = ({ url }) => { if (url) setUrlToLoad(url); };
     socket.on('video-sync', onSync);
-    socket.on('video-mode', onMode);
-    return () => {
-      socket.off('video-sync', onSync);
-      socket.off('video-mode', onMode);
-    };
+    return () => socket.off('video-sync', onSync);
   }, [socket, isHost]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onMood = ({ color }) => {
+      const found = MOODS.find(m => m.id === color);
+      if (found) setMood(found);
+    };
+    socket.on('mood-change', onMood);
+    return () => socket.off('mood-change', onMood);
+  }, [socket]);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (moodBtnRef.current && !moodBtnRef.current.contains(e.target)) {
+        setShowMood(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   function copyInviteLink() {
     const url = `${window.location.origin}?room=${roomData.id}`;
@@ -93,14 +145,14 @@ onIncomingData(handleIncomingData);
   function handleLoad() {
     const match = urlInput.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
     if (!match) return;
-    resetFile();
     setUrlToLoad(urlInput);
     socket?.emit('video-action', { action: 'pause', timestamp: 0, url: urlInput });
   }
 
-  function handleSelectFile() {
-    socket?.emit('video-mode', { mode: 'local' });
-    selectFile();
+  function handleMoodPick(m) {
+    setMood(m);
+    setShowMood(false);
+    socket?.emit('mood-change', { color: m.id });
   }
 
   return (
@@ -123,6 +175,8 @@ onIncomingData(handleIncomingData);
         .leave-btn:hover { background:rgba(255,64,129,0.2)!important; border-color:#ff4081!important; color:#ff4081!important; }
         .url-input:focus { outline:none; border-color:#7b1fa2!important; box-shadow:0 0 0 2px rgba(123,31,162,0.25); }
         .load-btn:hover  { background:linear-gradient(135deg,#e91e8c,#ff6ec7)!important; }
+        .mood-circle { transition: transform 0.15s ease, box-shadow 0.15s ease; cursor: pointer; }
+        .mood-circle:hover { transform: scale(1.2); }
       `}</style>
 
       {/* ── HEADER ── */}
@@ -131,7 +185,7 @@ onIncomingData(handleIncomingData);
         padding:'0 28px', height:56,
         background:'rgba(10,0,25,0.97)',
         borderBottom:'1px solid #2a0050',
-        backdropFilter:'blur(12px)', flexShrink:0, zIndex:10,
+        backdropFilter:'blur(12px)', flexShrink:0, zIndex:20,
       }}>
         <span style={{
           fontSize:20, fontWeight:900, color:'#ff6ec7', letterSpacing:4,
@@ -158,12 +212,58 @@ onIncomingData(handleIncomingData);
         </div>
 
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <button className="panel-btn" style={{
-            padding:'6px 16px', borderRadius:7, cursor:'pointer',
-            background:'transparent', border:'1px solid #4a148c',
-            color:'#ce93d8', fontSize:11, letterSpacing:2,
-            fontFamily: "'Courier New', monospace",
-          }}>🎭 MOOD</button>
+          <div ref={moodBtnRef} style={{ position:'relative' }}>
+            <button
+              className="panel-btn"
+              onClick={() => isHost && setShowMood(v => !v)}
+              style={{
+                padding:'6px 16px', borderRadius:7, cursor: isHost ? 'pointer' : 'default',
+                background:'transparent', border:'1px solid #4a148c',
+                color:'#ce93d8', fontSize:11, letterSpacing:2,
+                fontFamily: "'Courier New', monospace",
+                display:'flex', alignItems:'center', gap:6,
+              }}
+            >
+              <span style={{
+                width:8, height:8, borderRadius:'50%',
+                background: mood.color,
+                boxShadow: `0 0 6px ${mood.color}`,
+                display:'inline-block',
+                transition:'background 0.4s ease',
+              }}/>
+              MOOD
+            </button>
+
+            {showMood && isHost && (
+              <div style={{
+                position:'absolute', top:'calc(100% + 8px)', right:0,
+                background:'rgba(8,0,20,0.97)',
+                border:'1px solid #2a0050',
+                borderRadius:12, padding:'12px 16px',
+                display:'flex', alignItems:'center', gap:12,
+                boxShadow:'0 8px 32px rgba(0,0,0,0.8)',
+                zIndex:100, whiteSpace:'nowrap',
+              }}>
+                <span style={{ fontSize:9, letterSpacing:2, color:'#7e57c2', marginRight:4 }}>PICK VIBE</span>
+                {MOODS.map(m => (
+                  <div
+                    key={m.id}
+                    className="mood-circle"
+                    onClick={() => handleMoodPick(m)}
+                    style={{
+                      width:24, height:24, borderRadius:'50%',
+                      background: m.color,
+                      boxShadow: mood.id === m.id
+                        ? `0 0 0 2px white, 0 0 12px ${m.color}`
+                        : `0 0 6px ${m.color}`,
+                    }}
+                    title={m.label}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
           <button className="panel-btn" onClick={copyInviteLink} style={{
             padding:'6px 16px', borderRadius:7, cursor:'pointer',
             background:'transparent', border:'1px solid #4a148c',
@@ -182,12 +282,8 @@ onIncomingData(handleIncomingData);
       {/* ── BODY ── */}
       <div style={{ display:'flex', flex:1, overflow:'hidden' }}>
 
-        {/* ── LEFT — url bar + sky scene + reactions bar ── */}
-        <div style={{
-          flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
-        }}>
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
-          {/* URL toolbar — host only */}
           {isHost && (
             <div style={{
               flexShrink:0, padding:'10px 20px',
@@ -195,9 +291,7 @@ onIncomingData(handleIncomingData);
               borderBottom:'1px solid #2a0050',
               display:'flex', alignItems:'center', gap:10,
             }}>
-              <span style={{ fontSize:9, color:'#7e57c2', letterSpacing:3, whiteSpace:'nowrap' }}>
-                NOW PLAYING
-              </span>
+              <span style={{ fontSize:9, color:'#7e57c2', letterSpacing:3, whiteSpace:'nowrap' }}>NOW PLAYING</span>
               <input
                 className="url-input"
                 value={urlInput}
@@ -237,13 +331,6 @@ onIncomingData(handleIncomingData);
               >
                 {isScreenSharing ? '⏹ STOP SHARE' : '🖥 SHARE SCREEN'}
               </button>
-
-              <button onClick={handleSelectFile} style={{
-                padding:'8px 16px', borderRadius:8, border:'1px solid #4a148c',
-                background:'transparent', color:'#ce93d8', fontSize:11,
-                fontWeight:700, letterSpacing:2, cursor:'pointer',
-                fontFamily:"'Courier New',monospace", whiteSpace:'nowrap',
-              }}> OPEN FILE</button>
             </div>
           )}
 
@@ -253,6 +340,16 @@ onIncomingData(handleIncomingData);
             background:'linear-gradient(180deg,#050010 0%,#0d0025 40%,#1a0035 72%,#1b0030 100%)',
             display:'flex', flexDirection:'column', alignItems:'center',
           }}>
+
+            {/* ── MOOD TINT — only covers sky, sits below the screen (zIndex 4, screen is 5) ── */}
+            <div style={{
+              position:'absolute', inset:0,
+              background: mood.tint,
+              transition:'background 0.8s ease',
+              pointerEvents:'none',
+              zIndex:4,
+            }}/>
+
             {/* Stars */}
             <svg style={{ position:'absolute', inset:0, width:'100%', height:'65%', pointerEvents:'none', zIndex:1 }} preserveAspectRatio="xMidYMid slice">
               {[
@@ -292,7 +389,8 @@ onIncomingData(handleIncomingData);
               marginTop:28, marginBottom:20, borderRadius:16,
               background:'#000',
               animation:'screenGlow 4s ease-in-out infinite',
-              border:'2px solid #4a148c',
+              border:`2px solid ${mood.border}`,
+              transition:'border-color 0.8s ease',
             }}>
               <div style={{
                 background:'linear-gradient(90deg,#0d0020,#180030,#0d0020)',
@@ -308,11 +406,6 @@ onIncomingData(handleIncomingData);
                 socket={socket}
                 isHost={isHost}
                 urlToLoad={urlToLoad}
-                localFileUrl={localFileUrl}
-                guestFileUrl={guestFileUrl}
-                streamProgress={streamProgress}
-                isBuffering={isBuffering}
-                fileName={fileName}
                 screenShareStream={screenShareStream}
                 isScreenSharing={isScreenSharing}
                 sendVideoAction={(action, timestamp, url) =>
@@ -328,12 +421,18 @@ onIncomingData(handleIncomingData);
             }}>
               <div style={{
                 width:'100%', height:2,
-                background:'linear-gradient(90deg,transparent,#6a1b9a,#9c27b0,#6a1b9a,transparent)',
+                background:`linear-gradient(90deg,transparent,${mood.ground},${mood.color},${mood.ground},transparent)`,
                 animation:'groundShine 3s ease-in-out infinite',
+                transition:'background 0.8s ease',
               }}/>
               <div style={{ overflow:'hidden', marginTop:20, height:8, display:'flex', alignItems:'center', paddingLeft:16 }}>
                 {Array.from({length:20}).map((_,i)=>(
-                  <div key={i} style={{ width:50, height:2.5, background:'#ff6ec7', opacity:.18, borderRadius:2, marginRight:36, flexShrink:0 }}/>
+                  <div key={i} style={{
+                    width:50, height:2.5,
+                    background: mood.color,
+                    opacity:.18, borderRadius:2, marginRight:36, flexShrink:0,
+                    transition:'background 0.8s ease',
+                  }}/>
                 ))}
               </div>
             </div>
@@ -368,8 +467,6 @@ onIncomingData(handleIncomingData);
           background:'rgba(8,0,20,0.98)',
           borderLeft:'1px solid #2a0050',
         }}>
-
-          {/* Cams */}
           <div style={{
             border:'1px solid #2a0050', borderRadius:12,
             background:'rgba(12,0,30,0.9)', overflow:'hidden',
@@ -395,7 +492,6 @@ onIncomingData(handleIncomingData);
             </div>
           </div>
 
-          {/* Users */}
           <div style={{
             border:'1px solid #2a0050', borderRadius:12,
             background:'rgba(12,0,30,0.9)', padding:'10px 14px',
@@ -420,7 +516,6 @@ onIncomingData(handleIncomingData);
             </ul>
           </div>
 
-          {/* Chat */}
           <div style={{
             flex:1, minHeight:300, border:'1px solid #2a0050', borderRadius:12,
             background:'rgba(12,0,30,0.9)', overflow:'hidden',
@@ -437,7 +532,6 @@ onIncomingData(handleIncomingData);
               />
             </div>
           </div>
-
         </div>
       </div>
     </div>

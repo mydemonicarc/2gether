@@ -18,7 +18,10 @@ function VideoTile({ stream, label, muted = false }) {
       <video
         ref={videoRef}
         autoPlay playsInline muted={muted}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        style={{
+          width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+          transform: 'scaleX(-1)',
+        }}
       />
       <span style={{
         position: 'absolute', bottom: 6, left: 8,
@@ -37,7 +40,7 @@ export default function VideoCall({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-      {/* Mic + Cam toggles */}
+      {/* Controls */}
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           onClick={toggleMic}
@@ -69,13 +72,11 @@ export default function VideoCall({
         </button>
       </div>
 
-      {/* Video tiles */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: 8,
-      }}>
-        {localStream && <VideoTile stream={localStream} label="YOU" muted />}
+      {/* Video tiles — all mirrored */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        {localStream && (
+          <VideoTile stream={localStream} label="YOU" muted />
+        )}
         {Object.entries(remoteStreams).map(([userId, stream]) => {
           const user = users.find(u => u.id === userId);
           return (

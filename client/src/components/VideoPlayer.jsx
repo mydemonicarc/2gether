@@ -1,9 +1,8 @@
 /**
  * VideoPlayer.jsx
- * Handles three modes:
+ * Handles two modes:
  *   1. YouTube     — YT IFrame API
- *   2. Local file  — native <video> element + chunk buffering
- *   3. Screenshare — displays host's screen stream
+ *   2. Screenshare — displays host's screen stream
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -23,52 +22,24 @@ function extractVideoId(url) {
   return match ? match[1] : null;
 }
 
-function BufferBar({ progress, fileName }) {
-  return (
-    <div style={{
-      position: 'absolute', inset: 0, background: '#050010',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 16,
-      borderRadius: 12,
-    }}>
-      <div style={{ fontSize: 10, letterSpacing: 3, color: '#7e57c2', fontFamily: "'Courier New',monospace" }}>
-        BUFFERING
-      </div>
-      <div style={{ fontSize: 11, color: '#ce93d8', fontFamily: "'Courier New',monospace", maxWidth: 300, textAlign: 'center' }}>
-        {fileName || 'incoming file...'}
-      </div>
-      <div style={{ width: 280, height: 6, background: '#1a0035', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: 3, width: `${progress}%`,
-          background: 'linear-gradient(90deg,#7b1fa2,#ff6ec7)',
-          transition: 'width 0.3s ease',
-          boxShadow: '0 0 8px rgba(255,110,199,0.5)',
-        }}/>
-      </div>
-      <div style={{ fontSize: 10, color: '#ff6ec7', letterSpacing: 2, fontFamily: "'Courier New',monospace" }}>
-        {progress}%
-      </div>
-    </div>
-  );
-}
+const DRIFT_THRESHOLD  = 0.5;  // seconds — correct if guest is off by more than this
+const HEARTBEAT_INTERVAL = 3000; // ms — how often host broadcasts current time
 
 export default function VideoPlayer({
   socket, isHost, sendVideoAction,
   urlToLoad,
-  localFileUrl, guestFileUrl, streamProgress, isBuffering, fileName,
   screenShareStream, isScreenSharing,
 }) {
   const ytPlayerRef    = useRef(null);
   const ytContRef      = useRef(null);
-  const localVideoRef  = useRef(null);
   const screenVideoRef = useRef(null);
   const isSyncingRef   = useRef(false);
-  const ytReadyRef     = useRef(false); // true once YT player fires onReady
+  const ytReadyRef     = useRef(false);
 
   const [videoId, setVideoId] = useState(null);
   const [mode,    setMode]    = useState('none');
   const [status,  setStatus]  = useState(
-    isHost ? 'Load a YouTube URL or open a local file' : 'Waiting for host...'
+    isHost ? 'Load a YouTube URL' : 'Waiting for host...'
   );
 
   // ── Screen sharing (host) ─────────────────────────────────────────────────
@@ -78,7 +49,7 @@ export default function VideoPlayer({
       setStatus('SCREEN SHARE ACTIVE');
     } else {
       setMode(prev => prev === 'screenshare' ? 'none' : prev);
-      setStatus(isHost ? 'Load a YouTube URL or open a local file' : 'Waiting for host...');
+      setStatus(isHost ? 'Load a YouTube URL' : 'Waiting for host...');
     }
   }, [isScreenSharing, isHost]);
 
@@ -89,39 +60,22 @@ export default function VideoPlayer({
       setStatus('WATCHING HOST SCREEN');
     } else {
       setMode(prev => prev === 'screenshare' ? 'none' : prev);
-      setStatus(isHost ? 'Load a YouTube URL or open a local file' : 'Waiting for host...');
+      setStatus(isHost ? 'Load a YouTube URL' : 'Waiting for host...');
     }
   }, [screenShareStream]);
 
   // ── YouTube URL loaded ────────────────────────────────────────────────────
-useEffect(() => {
-  if (!isScreenSharing && urlToLoad) {
-    const id = extractVideoId(urlToLoad);
-    if (id) {
-      setVideoId(id);
-      setMode('youtube');
+  useEffect(() => {
+    if (!isScreenSharing && urlToLoad) {
+      const id = extractVideoId(urlToLoad);
+      if (id) {
+        setVideoId(id);
+        setMode('youtube');
+      }
+    } else if (!urlToLoad && !isScreenSharing) {
+      setMode(prev => prev === 'youtube' ? 'none' : prev);
     }
-  } else if (!urlToLoad && !isScreenSharing) {
-    setMode(prev => prev === 'youtube' ? 'none' : prev);
-  }
-}, [urlToLoad, isScreenSharing]);
-
-// ── Local file loaded ─────────────────────────────────────────────────────
-useEffect(() => {
-  if (!isScreenSharing && (localFileUrl || guestFileUrl)) {
-    // Just pause YT if playing — NEVER destroy it
-    if (ytPlayerRef.current && ytReadyRef.current) {
-      try { ytPlayerRef.current.pauseVideo(); } catch(e) {}
-    }
-    setMode('local');
-  }
-}, [localFileUrl, guestFileUrl, isScreenSharing]);
-
-useEffect(() => {
-  if (!isScreenSharing && isBuffering) {
-    setMode('local');
-  }
-}, [isBuffering, isScreenSharing]);
+  }, [urlToLoad, isScreenSharing]);
 
   // ── Screen share video element ────────────────────────────────────────────
   useEffect(() => {
@@ -138,7 +92,6 @@ useEffect(() => {
       if (!ytContRef.current) return;
 
       if (ytPlayerRef.current && ytReadyRef.current) {
-        // Player already exists and is ready — just load the new video
         try {
           ytPlayerRef.current.loadVideoById(videoId);
           setStatus(isHost ? 'You control playback' : 'Synced with host');
@@ -148,7 +101,6 @@ useEffect(() => {
         return;
       }
 
-      // First time — create the player
       ytPlayerRef.current = new YT.Player(ytContRef.current, {
         videoId,
         playerVars: { controls: isHost ? 1 : 0 },
@@ -169,39 +121,53 @@ useEffect(() => {
     });
   }, [mode, videoId]);
 
-  // ── Local file sync ───────────────────────────────────────────────────────
+  // ── Host heartbeat — broadcast current time every 3s for drift correction ─
   useEffect(() => {
-    const vid = localVideoRef.current;
-    if (!vid || !isHost || mode !== 'local') return;
-    const onPlay  = () => sendVideoAction('play',  vid.currentTime);
-    const onPause = () => { if (!isSyncingRef.current) sendVideoAction('pause', vid.currentTime); };
-    vid.addEventListener('play',  onPlay);
-    vid.addEventListener('pause', onPause);
-    return () => { vid.removeEventListener('play', onPlay); vid.removeEventListener('pause', onPause); };
-  }, [mode, isHost, localVideoRef.current]);
+    if (!isHost || mode !== 'youtube') return;
+
+    const interval = setInterval(() => {
+      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      const playerState = ytPlayerRef.current.getPlayerState();
+      // Only heartbeat while actually playing
+      if (playerState === window.YT?.PlayerState?.PLAYING) {
+        sendVideoAction('heartbeat', ytPlayerRef.current.getCurrentTime());
+      }
+    }, HEARTBEAT_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [isHost, mode, sendVideoAction]);
 
   // ── Sync events ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
+
     const onSync = ({ action, timestamp, url: syncUrl }) => {
-      if (syncUrl && mode === 'youtube' && ytPlayerRef.current) {
-        isSyncingRef.current = true;
+      if (!ytPlayerRef.current || !ytReadyRef.current) return;
+      if (mode !== 'youtube') return;
+
+      isSyncingRef.current = true;
+
+      if (action === 'play') {
         ytPlayerRef.current.seekTo(timestamp, true);
-        action === 'play' ? ytPlayerRef.current.playVideo() : ytPlayerRef.current.pauseVideo();
-        setTimeout(() => { isSyncingRef.current = false; }, 300);
+        ytPlayerRef.current.playVideo();
+      } else if (action === 'pause') {
+        ytPlayerRef.current.seekTo(timestamp, true);
+        ytPlayerRef.current.pauseVideo();
+      } else if (action === 'heartbeat') {
+        // Drift correction — only seek if meaningfully out of sync
+        const current = ytPlayerRef.current.getCurrentTime();
+        if (Math.abs(current - timestamp) > DRIFT_THRESHOLD) {
+          console.log(`[sync] drift corrected: ${Math.abs(current - timestamp).toFixed(2)}s`);
+          ytPlayerRef.current.seekTo(timestamp, true);
+        }
       }
-      if (mode === 'local' && localVideoRef.current) {
-        isSyncingRef.current = true;
-        localVideoRef.current.currentTime = timestamp;
-        action === 'play' ? localVideoRef.current.play().catch(() => {}) : localVideoRef.current.pause();
-        setTimeout(() => { isSyncingRef.current = false; }, 300);
-      }
+
+      setTimeout(() => { isSyncingRef.current = false; }, 300);
     };
+
     socket.on('video-sync', onSync);
     return () => socket.off('video-sync', onSync);
   }, [socket, mode]);
-
-  const activeUrl = isHost ? localFileUrl : guestFileUrl;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -243,35 +209,6 @@ useEffect(() => {
             }}/>
           )}
         </div>
-
-        {/* Local file */}
-        {mode === 'local' && (
-          <>
-            {!isHost && isBuffering && <BufferBar progress={streamProgress} fileName={fileName}/>}
-            {(!isBuffering || isHost) && activeUrl && (
-              <video
-                ref={localVideoRef}
-                src={activeUrl}
-                controls={isHost}
-                style={{
-                  position: 'absolute', inset: 0, width: '100%', height: '100%',
-                  borderRadius: 12, background: '#000', objectFit: 'contain',
-                }}
-                onCanPlay={() => setStatus(isHost ? 'You control playback' : 'Synced with host')}
-              />
-            )}
-            {!isHost && !activeUrl && !isBuffering && (
-              <div style={{
-                position: 'absolute', inset: 0, background: '#050010',
-                borderRadius: 12, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: '#4a148c', fontSize: 10,
-                letterSpacing: 2, fontFamily: "'Courier New',monospace",
-              }}>
-                WAITING FOR HOST FILE...
-              </div>
-            )}
-          </>
-        )}
 
         {/* Screen share */}
         {mode === 'screenshare' && (

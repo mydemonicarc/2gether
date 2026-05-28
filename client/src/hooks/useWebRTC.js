@@ -1,6 +1,6 @@
 /**
  * useWebRTC.js
- * Handles camera/mic peer connections, data channels, and screen sharing.
+ * Handles camera/mic peer connections and screen sharing.
  */
 
 import { useRef, useState, useEffect, useCallback } from 'react';
@@ -14,7 +14,6 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const peersRef        = useRef({});
-  const dataHandlerRef  = useRef(null);
   const screenStreamRef = useRef(null);
   const localStreamRef  = useRef(null);
 
@@ -24,7 +23,14 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
   // ── Get camera + mic ───────────────────────────────────────────────────────
   useEffect(() => {
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+      .getUserMedia({
+        video: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl:  true,
+        },
+      })
       .then(stream => {
         setLocalStream(stream);
         localStreamRef.current = stream;
@@ -38,6 +44,12 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
   // ── Create peer ────────────────────────────────────────────────────────────
   const createPeer = useCallback((targetUserId, stream, initiator) => {
     const peer = new Peer({
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ]
+      },
       initiator,
       trickle: true,
       stream: stream || undefined,
@@ -53,17 +65,8 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
       setRemoteStreams(prev => ({ ...prev, [targetUserId]: remoteStream }));
     });
 
-    peer.on('data', rawData => {
-      try {
-        const msg = typeof rawData === 'string'
-          ? JSON.parse(rawData)
-          : { type: 'file-chunk-binary', buffer: rawData };
-        dataHandlerRef.current?.(msg, targetUserId);
-      } catch (e) { console.warn('[webrtc] data parse error', e); }
-    });
-
     peer.on('error', err => console.warn('[webrtc] peer error:', err.message));
-    peer.on('connect', () => console.log('[webrtc] data channel connected to', targetUserId));
+    peer.on('connect', () => console.log('[webrtc] connected to', targetUserId));
     peer.on('close', () => {
       setRemoteStreams(prev => { const n = { ...prev }; delete n[targetUserId]; return n; });
     });
@@ -148,9 +151,39 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
     setMicOn(v => !v);
   }
 
+  // ── Create a black canvas track to send when cam is off ───────────────────
+  function createBlackTrack() {
+    const canvas = document.createElement('canvas');
+    canvas.width  = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.captureStream(1).getVideoTracks()[0];
+  }
+
   function toggleCam() {
     if (!localStream) return;
-    localStream.getVideoTracks().forEach(t => (t.enabled = !t.enabled));
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (!videoTrack) return;
+
+    if (camOn) {
+      // Turning off — replace live track with black canvas in all peers
+      const blackTrack = createBlackTrack();
+      Object.values(peersRef.current).forEach(peer => {
+        const sender = peer._pc?.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(blackTrack);
+      });
+      videoTrack.enabled = false;
+    } else {
+      // Turning on — restore real camera track in all peers
+      videoTrack.enabled = true;
+      Object.values(peersRef.current).forEach(peer => {
+        const sender = peer._pc?.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(videoTrack);
+      });
+    }
+
     setCamOn(v => !v);
   }
 
@@ -194,30 +227,9 @@ export function useWebRTC({ socket, myUserId, roomUsers }) {
     socket?.emit('screen-share-stop');
   }
 
-  // ── Data helpers ──────────────────────────────────────────────────────────
-  function sendData(targetUserId, msg) {
-    const peer = peersRef.current[targetUserId];
-    if (!peer || !peer.connected) return;
-    try { peer.send(JSON.stringify(msg)); } catch (e) { console.warn('[webrtc] sendData:', e.message); }
-  }
-
-  function sendBinary(targetUserId, buffer) {
-    const peer = peersRef.current[targetUserId];
-    if (!peer || !peer.connected) return;
-    try { peer.send(buffer); } catch (e) { console.warn('[webrtc] sendBinary:', e.message); }
-  }
-
-  function broadcastData(msg)   { Object.keys(peersRef.current).forEach(uid => sendData(uid, msg)); }
-  function broadcastBinary(buf) { Object.keys(peersRef.current).forEach(uid => sendBinary(uid, buf)); }
-  function onIncomingData(h)    { dataHandlerRef.current = h; }
-  function getConnectedPeers()  { return Object.keys(peersRef.current); }
-  function getPeers()           { return peersRef.current; }
-
   return {
     localStream, remoteStreams,
     micOn, camOn, toggleMic, toggleCam,
     isScreenSharing, startScreenShare, stopScreenShare,
-    sendData, sendBinary, broadcastData, broadcastBinary,
-    onIncomingData, getConnectedPeers, getPeers,
   };
 }
